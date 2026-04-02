@@ -1,1 +1,143 @@
+<!DOCTYPE html>
+<html lang="bn">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Vault Messenger v14</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-database-compat.js"></script>
+    <style>
+        body { background: #020617; color: #f1f5f9; font-family: sans-serif; overflow: hidden; }
+        .glass { background: rgba(15, 23, 42, 0.95); backdrop-filter: blur(20px); border: 1px solid rgba(255,255,255,0.1); }
+        .hidden { display: none !important; }
+    </style>
+</head>
+<body class="min-h-screen flex items-center justify-center p-4">
+    <div id="lockScreen" class="fixed inset-0 z-[100] bg-[#020617] flex items-center justify-center p-6 text-center">
+        <div>
+            <h1 class="text-2xl font-black mb-6 uppercase tracking-widest text-white">Vault Terminal</h1>
+            <input type="password" id="pinDisplay" placeholder="••••" readonly class="w-44 bg-black/60 border border-cyan-500/30 rounded-3xl p-5 text-4xl text-cyan-400 text-center outline-none mb-10">
+            <div class="grid grid-cols-3 gap-4 max-w-[300px] mx-auto">
+                <script>
+                    for(let i=1; i<=9; i++) document.write(`<button onclick="press('${i}')" class="bg-white/5 py-6 rounded-3xl font-bold text-2xl">${i}</button>`);
+                </script>
+                <button onclick="clearPin()" class="bg-red-500/10 text-red-500 py-6 rounded-3xl">✕</button>
+                <button onclick="press('0')" class="bg-white/5 py-6 rounded-3xl text-2xl">0</button>
+                <button onclick="verify()" class="bg-cyan-500 text-black py-6 rounded-3xl font-black">OK</button>
+            </div>
+        </div>
+    </div>
 
+    <div id="appContainer" class="hidden w-full max-w-[450px] glass rounded-[3rem] p-10 shadow-2xl">
+        <h1 class="text-2xl font-black text-center mb-8 italic uppercase">Vault Messenger <span class="text-cyan-500">v14</span></h1>
+        <div class="grid grid-cols-2 gap-4 mb-8">
+            <label class="bg-black/60 p-4 rounded-2xl border border-white/5 cursor-pointer text-center">
+                <span id="shadowStat" class="text-xs font-black text-white">UPLOAD IMAGE</span>
+                <input type="file" id="imgInput" class="hidden" accept="image/*" onchange="handleImg(this)">
+            </label>
+            <div class="bg-black/60 p-4 rounded-2xl border border-white/5 text-center">
+                <span class="text-[9px] block text-slate-500 font-black mb-1 uppercase text-white">Shift Key</span>
+                <input type="number" id="shift" value="12" class="bg-transparent text-cyan-400 font-black outline-none w-12 text-center">
+            </div>
+        </div>
+        <textarea id="msgInput" placeholder="Enter secret message..." class="w-full bg-black/60 border border-slate-800 rounded-3xl p-6 h-40 mb-8 outline-none text-sm text-slate-300 resize-none"></textarea>
+        <div class="grid grid-cols-2 gap-4">
+            <button onclick="run('enc')" class="bg-cyan-500 text-black py-5 rounded-2xl font-black uppercase text-xs">Encrypt</button>
+            <button onclick="run('dec')" class="bg-slate-800 text-white py-5 rounded-2xl font-black uppercase text-xs">Decrypt</button>
+        </div>
+        <div id="resArea" class="hidden mt-8 p-6 bg-cyan-500/5 rounded-[2.5rem] border border-cyan-500/10">
+            <p id="resText" class="text-center break-all text-xs mb-4 text-cyan-100"></p>
+            <img id="resImg" class="w-full rounded-2xl shadow-xl">
+            <button onclick="save()" class="w-full mt-6 bg-white text-black py-4 rounded-2xl font-black text-xs uppercase text-black">Save / Copy</button>
+        </div>
+    </div>
+
+    <div id="payModal" class="hidden fixed inset-0 z-[200] bg-black/98 flex items-center justify-center p-6 text-center">
+        <div class="glass p-10 rounded-[3.5rem] w-full max-w-sm">
+            <h2 class="text-cyan-500 font-black text-xl mb-4 uppercase">Access Locked</h2>
+            <p class="text-[10px] text-slate-400 mb-8 font-black uppercase">Payment Required for Decryption</p>
+            <div id="payOptions" class="space-y-3">
+                <button onclick="showTrx('bKash: 01774460656')" class="w-full bg-[#D12053] py-5 rounded-2xl font-bold">bKash</button>
+                <button onclick="showTrx('SOL: HBxdLgDcfHr8cdZuG5K2mKhr3XxLjWH2yrFS7Pg7mg9Q')" class="w-full bg-gradient-to-r from-purple-600 to-green-400 py-5 rounded-2xl font-black text-black">SOLANA</button>
+            </div>
+            <div id="trxInputArea" class="hidden mt-4">
+                <p id="addr" class="text-[11px] mb-4 text-cyan-300 font-mono"></p>
+                <input type="text" id="trxId" placeholder="ENTER TRX ID" class="w-full bg-black border border-slate-700 p-4 rounded-2xl text-center mb-4 text-cyan-400 font-bold outline-none">
+                <button onclick="submitTrx()" class="w-full bg-cyan-500 text-black py-4 rounded-2xl font-black">SUBMIT</button>
+            </div>
+        </div>
+    </div>
+
+    <canvas id="matrixCanvas" style="display:none;"></canvas>
+    <script>
+        const firebaseConfig = {
+            apiKey: "AIzaSyBhTOWBvfqDvmDW03FOF5OqEq8HRv5dMME",
+            authDomain: "vault-messenger-fcb60.firebaseapp.com",
+            projectId: "vault-messenger-fcb60",
+            databaseURL: "https://vault-messenger-fcb60-default-rtdb.firebaseio.com/"
+        };
+        firebase.initializeApp(firebaseConfig);
+        const db = firebase.database();
+        let currentPin = "", shadow = null, paid = false;
+
+        function press(n) { if(currentPin.length < 4) currentPin += n; document.getElementById('pinDisplay').value = currentPin; }
+        function clearPin() { currentPin = ""; document.getElementById('pinDisplay').value = ""; }
+        function verify() {
+            let saved = localStorage.getItem('v14_pin');
+            if(!saved) { localStorage.setItem('v14_pin', currentPin); location.reload(); }
+            else if(currentPin === saved) { 
+                document.getElementById('lockScreen').classList.add('hidden'); 
+                document.getElementById('appContainer').classList.remove('hidden'); 
+            } else { alert("WRONG PIN"); clearPin(); }
+        }
+
+        function handleImg(i) {
+            const r = new FileReader();
+            r.onload = (e) => { shadow = e.target.result; document.getElementById('shadowStat').innerText = "IMAGE LOADED"; };
+            r.readAsDataURL(i.files[0]);
+        }
+
+        async function run(mode) {
+            if(mode === 'dec' && shadow && !paid) { document.getElementById('payModal').classList.remove('hidden'); return; }
+            const shift = parseInt(document.getElementById('shift').value);
+            const input = document.getElementById('msgInput').value;
+            document.getElementById('resArea').classList.remove('hidden');
+
+            if(shadow) {
+                const img = new Image(); img.src = shadow;
+                await new Promise(r => img.onload = r);
+                const cvs = document.getElementById('matrixCanvas');
+                const ctx = cvs.getContext('2d');
+                cvs.width = img.width; cvs.height = img.height;
+                ctx.drawImage(img, 0, 0);
+                const d = ctx.getImageData(0,0,cvs.width,cvs.height);
+                let seed = shift;
+                for(let i=0; i<d.data.length; i+=4) {
+                    d.data[i] ^= (seed % 255);
+                    seed = (seed * 16807) % 2147483647;
+                }
+                ctx.putImageData(d, 0, 0);
+                document.getElementById('resImg').src = cvs.toDataURL();
+            } else {
+                const s = mode === 'enc' ? shift : -shift;
+                document.getElementById('resText').innerText = input.split('').map(c => String.fromCharCode(c.charCodeAt(0) + s)).join('');
+            }
+        }
+
+        function showTrx(a) { document.getElementById('addr').innerText = a; document.getElementById('payOptions').classList.add('hidden'); document.getElementById('trxInputArea').classList.remove('hidden'); }
+        function submitTrx() {
+            const trx = document.getElementById('trxId').value;
+            const ref = db.ref('payments').push();
+            ref.set({ trx, status: 'pending' });
+            ref.on('value', s => { if(s.val()?.status === 'approved') { paid = true; document.getElementById('payModal').classList.add('hidden'); run('dec'); } });
+            alert("Verification requested.");
+        }
+        function save() {
+            const img = document.getElementById('resImg').src;
+            if(img) { const a = document.createElement('a'); a.href = img; a.download = "vault.png"; a.click(); }
+            else { navigator.clipboard.writeText(document.getElementById('resText').innerText); alert("COPIED"); }
+        }
+    </script>
+</body>
+</html>
