@@ -1,0 +1,6 @@
+{
+  "appId": "com.vault.v14",
+  "appName": "Vault V14",
+  "webDir": ".",
+  "server": { "androidScheme": "https" }
+}
